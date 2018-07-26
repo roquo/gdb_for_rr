@@ -1,5 +1,14 @@
 2018-07-26  Tom de Vries  <tdevries@suse.de>
 
+	* gdb.base/vla-optimized-out.c: Add comment about origin of test-case.
+
+2018-07-26  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* gdb.base/maint.exp: Add check that dwarf unwinders control flag
+	is visible.
+
+2018-07-26  Tom de Vries  <tdevries@suse.de>
+
 	PR breakpoints/23366
 	* gdb.base/catch-follow-exec.c: New test.
 	* gdb.base/catch-follow-exec.exp: New file.
