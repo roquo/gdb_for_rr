@@ -190,6 +190,13 @@ struct private_thread_info
   virtual ~private_thread_info () = 0;
 };
 
+struct ptid_num_mapping
+{
+	ptid_t ptid;
+	int global_num;
+	int per_inf_num;
+};
+
 /* Threads are intrusively refcounted objects.  Being the
    user-selected thread is normally considered an implicit strong
    reference and is thus not accounted in the refcount, unlike

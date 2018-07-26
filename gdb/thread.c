@@ -44,6 +44,7 @@
 #include "thread-fsm.h"
 #include "tid-parse.h"
 #include <algorithm>
+#include <list>
 #include "common/gdb_optional.h"
 
 /* Definition of struct thread_info exported to gdbthread.h.  */
@@ -331,6 +332,8 @@ add_thread (ptid_t ptid)
   return add_thread_with_info (ptid, NULL);
 }
 
+std::list<struct ptid_num_mapping> all_existed_threads_list;
+
 private_thread_info::~private_thread_info () = default;
 
 thread_info::thread_info (struct inferior *inf_, ptid_t ptid_)
@@ -338,8 +341,32 @@ thread_info::thread_info (struct inferior *inf_, ptid_t ptid_)
 {
   gdb_assert (inf_ != NULL);
 
-  this->global_num = ++highest_thread_num;
-  this->per_inf_num = ++inf_->highest_thread_num;
+  // for record/replay we look if we have created this thread before
+  // we have a global map with tid and global_num/per_inf_num assignments
+  struct ptid_num_mapping map;
+  bool thread_already_existed = false;
+  for(auto const& i : all_existed_threads_list) {
+	  if(i.ptid == ptid) {
+		  map.ptid = i.ptid;
+		  map.global_num = i.global_num;
+		  map.per_inf_num = i.per_inf_num;
+		  thread_already_existed = true;
+		  break;
+	  }
+  }
+  if(thread_already_existed){
+	  this->global_num = map.global_num;
+	  this->per_inf_num = map.per_inf_num;
+  }
+  else {
+	  this->global_num = ++highest_thread_num;
+	  this->per_inf_num = ++inf_->highest_thread_num;
+	  // add new thread to map
+	  map.ptid = this->ptid;
+	  map.global_num = this->global_num;
+	  map.per_inf_num = this->per_inf_num;
+	  all_existed_threads_list.push_back(map);
+  }
 
   /* Nothing to follow yet.  */
   memset (&this->pending_follow, 0, sizeof (this->pending_follow));
