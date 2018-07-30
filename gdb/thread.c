@@ -45,6 +45,7 @@
 #include "tid-parse.h"
 #include <algorithm>
 #include <list>
+#include <regex>
 #include "common/gdb_optional.h"
 
 /* Definition of struct thread_info exported to gdbthread.h.  */
@@ -362,7 +363,7 @@ thread_info::thread_info (struct inferior *inf_, ptid_t ptid_)
 	  this->global_num = ++highest_thread_num;
 	  this->per_inf_num = ++inf_->highest_thread_num;
 	  // add new thread to map
-	  map.ptid = this->ptid;
+	  map.ptid = ptid_;
 	  map.global_num = this->global_num;
 	  map.per_inf_num = this->per_inf_num;
 	  all_existed_threads_list.push_back(map);
@@ -1891,6 +1892,144 @@ thread_name_command (const char *arg, int from_tty)
   info->name = arg ? xstrdup (arg) : NULL;
 }
 
+static void
+change_thread_id_1 (const std::string s1, const std::string s2)
+{
+	struct thread_info *thr;
+	update_thread_list();
+
+	bool found_id_1 = false;
+	bool empty_id_2 = true;
+	// check if old id exists and new id does not
+	ALL_THREADS(thr)
+		{
+			std::string s_to_comp ("");
+			if (show_inferior_qualified_tids())
+			{
+				std::stringstream ss;
+				ss << thr->inf->num << "." << thr->per_inf_num;
+				s_to_comp = ss.str();
+				//printf("%s\n", s_to_comp.c_str());
+			}
+			else
+			{
+				std::stringstream ss;
+				ss << thr->per_inf_num;
+				s_to_comp = ss.str();
+				//printf("%s\n", s_to_comp.c_str());
+			}
+			if (s1.compare(s_to_comp) == 0)
+				found_id_1 = true;
+			if (s2.compare(s_to_comp) == 0)
+				empty_id_2 = false;
+		}
+
+	if (found_id_1 && empty_id_2)
+	{
+		// change thread id
+		ALL_THREADS(thr)
+			{
+				std::string s_to_comp ("");
+				if (show_inferior_qualified_tids())
+				{
+					std::stringstream ss;
+					ss << thr->inf->num << "." << thr->per_inf_num;
+					s_to_comp = ss.str();
+					if (s1.compare(s_to_comp) == 0)
+					{
+						int pos = s2.find(".");
+						if(pos!=std::string::npos)
+						{
+							std::string subs1 = s2.substr(0, pos);
+							std::string subs2 = s2.substr(pos+1, s2.size());
+							thr->inf->num = atoi(subs1.c_str());
+							thr->per_inf_num = atoi(subs2.c_str());
+							break;
+						}
+						else
+							error (_("Unexpected error!"));
+					}
+				}
+				else
+				{
+					std::stringstream ss;
+					ss << thr->per_inf_num;
+					s_to_comp = ss.str();
+					if (s1.compare(s_to_comp) == 0)
+					{
+						thr->per_inf_num = atoi(s2.c_str());
+						break;
+					}
+				}
+			}
+		return;
+	}
+	else if(!found_id_1)
+		error (_("<old_id> does not exist!"));
+	else if(!empty_id_2)
+		error (_("<new_id> already exists!"));
+	else
+		error (_("Unexpected error!"));
+}
+
+static void
+change_thread_id (const char *arg, int from_tty)
+{
+	if (arg == NULL || *arg == '\0')
+		error (_("Command requires arguments."));
+
+	std::string s(arg);
+	int c = std::count(s.begin(), s.end(), ' ');
+	if(c!=1)
+		error (_("Usage: <old_ID> <new_ID>"));
+
+	int p = s.find(" ");
+	if(p!=std::string::npos)
+	{
+		// build two substrings
+		std::string s1 = s.substr(0,p);
+		std::string s2 = s.substr(p+1,s.size());
+		regex_t r1;
+		regex_t r2;
+		regmatch_t matches[1];
+
+		//compare if the strings are regular values for thread ID's
+		if (regcomp(&r1, "(^[0-9]+\\.[0-9]+$)", REG_EXTENDED != 0))
+			error (_("Unexpected Error"));
+		if (regcomp(&r2, "(^[0-9]+$)", REG_EXTENDED != 0))
+				error (_("Unexpected Error"));
+
+		int status[2][2];
+		status[0][0] = regexec(&r1, s1.c_str(), 1, matches, 0);
+		status[0][1] = regexec(&r2, s1.c_str(), 1, matches, 0);
+		if (status[0][0] != 0 && status[0][1] != 0)
+			error (_("Usage: <old_ID> <new_ID>"));
+		status[1][0] = regexec(&r1, s2.c_str(), 1, matches, 0);
+		status[1][1] = regexec(&r2, s2.c_str(), 1, matches, 0);
+		if (status[1][0] != 0 && status[1][1] != 0)
+				error (_("Usage: <old_ID> <new_ID>"));
+		regfree(&r1);
+		regfree(&r2);
+
+		// all values are regular,
+		// now we look if both values match the same pattern
+		if(status[0][0] == status[1][0] && status[0][1] == status[1][1])
+		{
+			change_thread_id_1(s1, s2);
+		}
+		else
+			error (_("Thread ID's have not the correct pattern!"));
+	}
+}
+
+static void
+rr_running_under_eclipse (const char *arg, int from_tty)
+{
+	++highest_thread_num;
+	struct inferior *inf_ = find_inferior_ptid (inferior_ptid);
+	++inf_->highest_thread_num;
+}
+
 /* Find thread ids with a name, target pid, or extra info matching ARG.  */
 
 static void
@@ -2164,6 +2303,18 @@ shortcut for 'thread apply all -s frame apply all -s COMMAND'"));
 	   _("Set the current thread's name.\n\
 Usage: thread name [NAME]\n\
 If NAME is not given, then any existing name is removed."), &thread_cmd_list);
+
+  add_cmd("change_ID", class_run, change_thread_id, _("\
+Change a existing thread ID with a non-existing thread ID.\n\
+Usage: thread change_ID <old_ID> <new_ID>\n\
+Used by record/replay debuggers to control the replayed thread ID's."), &thread_cmd_list);
+
+  add_cmd("rr_running_under_eclipse", class_run, rr_running_under_eclipse, _("\
+Call this function, when the debugger is used with rr \n\
+(record/replay from https://github.com/mozilla/rr ).\n\
+rr calls this function automated, when used correct with eclipse, \n\
+more Information: https://github.com/mozilla/rr/wiki/Using-rr-in-an-IDE \n\
+Do not use this function manual!"), &cmdlist);
 
   add_cmd ("find", class_run, thread_find_command, _("\
 Find threads that match a regular expression.\n\
