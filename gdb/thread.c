@@ -335,6 +335,8 @@ add_thread (ptid_t ptid)
 
 std::list<struct ptid_num_mapping> all_existed_threads_list;
 
+bool rr_run_under_eclipse = false;
+
 private_thread_info::~private_thread_info () = default;
 
 thread_info::thread_info (struct inferior *inf_, ptid_t ptid_)
@@ -347,6 +349,13 @@ thread_info::thread_info (struct inferior *inf_, ptid_t ptid_)
   struct ptid_num_mapping map;
   bool thread_already_existed = false;
   for(auto const& i : all_existed_threads_list) {
+
+	  if(rr_run_under_eclipse){
+		  ++highest_thread_num;
+		  ++inf_->highest_thread_num;
+		  rr_run_under_eclipse = false;
+	  }
+
 	  if(i.ptid == ptid) {
 		  map.ptid = i.ptid;
 		  map.global_num = i.global_num;
@@ -2025,9 +2034,7 @@ change_thread_id (const char *arg, int from_tty)
 static void
 rr_running_under_eclipse (const char *arg, int from_tty)
 {
-	++highest_thread_num;
-	struct inferior *inf_ = find_inferior_ptid (inferior_ptid);
-	++inf_->highest_thread_num;
+	rr_run_under_eclipse = true;
 }
 
 /* Find thread ids with a name, target pid, or extra info matching ARG.  */
