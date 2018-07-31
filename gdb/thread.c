@@ -524,9 +524,15 @@ find_thread_global_id (int global_id)
 {
   struct thread_info *tp;
   update_thread_list();
+  int i = 0;
   for (tp = thread_list; tp; tp = tp->next)
+  {
     if (tp->global_num == global_id)
       return tp;
+    i++;
+  }
+  if(global_id > i)
+	  return thread_list;
 
   return NULL;
 }
